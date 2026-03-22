@@ -1,0 +1,51 @@
+cliente_id,nombre,tipo,pais,region,vendedor_id,activo,fecha_registro
+CLI001,Restaurante La Unión,restaurante,Guatemala,Ciudad de Guatemala,VEN02,True,2023-03-13
+CLI002,Restaurante La Bendición,restaurante,Guatemala,Escuintla,VEN01,True,2023-10-30
+CLI003,Tienda La Unión Pérez,tienda_barrio,Nicaragua,Managua,VEN05,True,2023-11-05
+CLI004,Tienda Mi Tienda Torres,tienda_barrio,Guatemala,Escuintla,VEN04,True,2023-04-23
+CLI005,Tienda El Ahorro Rodríguez,tienda_barrio,Nicaragua,Granada,VEN07,True,2023-03-23
+CLI006,Tienda La Unión García,tienda_barrio,Nicaragua,León,VEN01,True,2023-02-17
+CLI007,Tienda La Victoria Morales,tienda_barrio,Nicaragua,Managua,VEN03,True,2023-01-23
+CLI008,Tienda La Popular Hernández,tienda_barrio,Nicaragua,Granada,VEN01,True,2023-10-10
+CLI009,Super El Ahorro,supermercado,El Salvador,San Miguel,VEN03,True,2023-10-23
+CLI010,Tienda Mi Tienda Pérez,tienda_barrio,Honduras,La Ceiba,VEN07,True,2023-05-29
+CLI011,Restaurante Nueva Vida,restaurante,Guatemala,Ciudad de Guatemala,VEN03,True,2023-08-21
+CLI012,Tienda La Unión Martínez,tienda_barrio,El Salvador,San Salvador,VEN06,True,2023-12-16
+CLI013,Super La Bendición,supermercado,Guatemala,Escuintla,VEN06,True,2023-05-06
+CLI014,Tienda La Popular Torres,tienda_barrio,Honduras,San Pedro Sula,VEN02,True,2023-12-17
+CLI015,Tienda La Esperanza García,tienda_barrio,El Salvador,San Salvador,VEN04,True,2023-05-18
+CLI016,Distribuidora Morales & Hnos.,distribuidor,Guatemala,Ciudad de Guatemala,VEN06,True,2023-06-11
+CLI017,Tienda La Popular Díaz,tienda_barrio,Honduras,La Ceiba,VEN02,True,2023-05-16
+CLI018,Restaurante La Bendición,restaurante,Honduras,Tegucigalpa,VEN03,True,2023-10-27
+CLI019,Tienda La Unión López,tienda_barrio,Nicaragua,Granada,VEN05,True,2023-09-10
+CLI020,Restaurante San José,restaurante,Guatemala,Ciudad de Guatemala,VEN06,True,2023-03-23
+CLI021,Tienda Nueva Vida Morales,tienda_barrio,Nicaragua,Granada,VEN04,True,2023-09-28
+CLI022,Restaurante La Esperanza,restaurante,El Salvador,San Miguel,VEN06,True,2023-02-28
+CLI023,Restaurante La Victoria,restaurante,Costa Rica,Alajuela,VEN01,True,2023-05-31
+CLI024,Tienda El Buen Precio Martínez,tienda_barrio,Nicaragua,Managua,VEN05,True,2023-04-02
+CLI025,Restaurante El Triunfo,restaurante,Costa Rica,San José,VEN07,True,2023-11-24
+CLI026,Tienda La Victoria López,tienda_barrio,Costa Rica,Heredia,VEN05,True,2023-09-29
+CLI027,Tienda La Esperanza González,tienda_barrio,Guatemala,Escuintla,VEN03,True,2023-06-07
+CLI028,Tienda El Éxito González,tienda_barrio,Honduras,Tegucigalpa,VEN01,True,2023-09-06
+CLI029,Restaurante San José,restaurante,Guatemala,Escuintla,VEN06,True,2023-09-01
+CLI030,Tienda El Ahorro Morales,tienda_barrio,Costa Rica,San José,VEN04,True,2023-04-19
+CLI031,Super El Buen Precio,supermercado,Costa Rica,Heredia,VEN03,True,2023-07-24
+CLI032,Restaurante El Paraíso,restaurante,El Salvador,Santa Ana,VEN01,True,2023-05-07
+CLI033,Tienda El Éxito Torres,tienda_barrio,Honduras,Tegucigalpa,VEN02,True,2023-10-29
+CLI034,Tienda Mi Tienda Rodríguez,tienda_barrio,Honduras,Tegucigalpa,VEN02,True,2023-02-04
+CLI035,Tienda La Unión Martínez,tienda_barrio,Guatemala,Quetzaltenango,VEN06,True,2023-09-06
+CLI036,Tienda La Popular Morales,tienda_barrio,Honduras,La Ceiba,VEN05,True,2023-08-31
+CLI037,Restaurante La Unión,restaurante,Honduras,San Pedro Sula,VEN01,True,2023-02-19
+CLI038,Tienda El Paraíso Rodríguez,tienda_barrio,Nicaragua,León,VEN06,True,2023-12-01
+CLI039,Tienda La Victoria González,tienda_barrio,Guatemala,Ciudad de Guatemala,VEN02,True,2023-04-09
+CLI040,Tienda Nueva Vida López,tienda_barrio,Honduras,La Ceiba,VEN03,True,2023-08-25
+CLI041,Tienda El Ahorro Torres,tienda_barrio,Honduras,Tegucigalpa,VEN01,True,2023-01-26
+CLI042,Distribuidora Pérez & Hnos.,distribuidor,Costa Rica,San José,VEN02,True,2023-07-28
+CLI043,Tienda Nueva Vida Rodríguez,tienda_barrio,Nicaragua,León,VEN02,True,2023-07-14
+CLI044,Tienda La Económica Díaz,tienda_barrio,Guatemala,Quetzaltenango,VEN03,True,2023-08-05
+CLI045,Restaurante San José,restaurante,Costa Rica,Heredia,VEN02,True,2023-06-01
+CLI046,Super La Bendición,supermercado,Honduras,Tegucigalpa,VEN01,True,2023-06-10
+CLI047,Super La Bendición,supermercado,Guatemala,Ciudad de Guatemala,VEN07,True,2023-09-29
+CLI048,Distribuidora González & Hnos.,distribuidor,Honduras,Tegucigalpa,VEN07,True,2023-04-06
+CLI049,Tienda El Ahorro Pérez,tienda_barrio,Guatemala,Escuintla,VEN04,True,2023-03-03
+CLI050,Super La Esperanza,supermercado,Costa Rica,San José,VEN05,True,2023-02-11

@@ -1,0 +1,11 @@
+sku_id,nombre,categoria,precio_caja,unidades_caja
+SKU001,Pepsi Cola 600ml,Cola,18.5,24
+SKU002,Pepsi Cola 1.5L,Cola,22.0,12
+SKU003,Pepsi Cola 2L,Cola,24.5,8
+SKU004,Pepsi Cola 355ml Lata,Cola,20.0,24
+SKU005,7UP 600ml,Lima-Limón,17.5,24
+SKU006,7UP 1.5L,Lima-Limón,21.0,12
+SKU007,Mirinda Naranja 600ml,Sabores,17.0,24
+SKU008,Mirinda Uva 600ml,Sabores,17.0,24
+SKU009,Agua H2Oh! 500ml,Agua,12.0,24
+SKU010,Gatorade Limón 500ml,Isotónica,28.0,12

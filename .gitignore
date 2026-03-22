@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+db/*.db
+*.log
+.DS_Store
