@@ -1,9 +1,9 @@
 """
 tools.py — Herramientas del agente Maxi.
 Databricks Premium (apex_dq_premium.pedido_sugerido) vía SQL Serverless.
-Fallback automático a SQLite local si Databricks no está disponible.
+Todas las queries van directamente a Databricks — sin fallback local.
 """
-import sqlite3, json, os, requests
+import json, os, requests
 from pathlib import Path
 from datetime import datetime
 
@@ -13,9 +13,6 @@ ADB_TOKEN_PATH = Path.home() / ".config/databricks/adb_prem_token"
 WH_ID = "ad52a9849c1c7ebf"
 CATALOG = "apex_dq_premium"
 SCHEMA  = "pedido_sugerido"
-
-# ── SQLite fallback ───────────────────────────────────────────────────────
-DB_PATH = Path(__file__).parent.parent / "db" / "apex_demo.db"
 
 def _adb_token():
     """Obtiene token del SP via client credentials (sin expiración de sesión).
@@ -48,83 +45,62 @@ def _adb_token():
     return os.environ.get("DATABRICKS_TOKEN", "")
 
 def _q(sql_stmt, params=()):
-    """Ejecuta query: intenta Databricks primero, fallback SQLite."""
+    """Ejecuta SELECT en Databricks SQL Serverless. Lanza excepción si falla."""
     token = _adb_token()
-    if token:
-        # Substituir ? por valores (Databricks no soporta ? params)
-        if params:
-            for p in params:
-                p_str = f"'{p}'" if isinstance(p, str) else str(p)
-                sql_stmt = sql_stmt.replace("?", p_str, 1)
-        # Adaptar nombres de tablas al catálogo Databricks
-        full_sql = sql_stmt.replace(
-            " clientes", f" {CATALOG}.{SCHEMA}.clientes"
-        ).replace(
-            " vendedores", f" {CATALOG}.{SCHEMA}.vendedores"
-        ).replace(
-            " skus", f" {CATALOG}.{SCHEMA}.skus"
-        ).replace(
-            " historial_compras", f" {CATALOG}.{SCHEMA}.historial_compras"
-        ).replace(
-            " stock_actual", f" {CATALOG}.{SCHEMA}.stock_actual"
-        ).replace(
-            " sugerencias_modelo", f" {CATALOG}.{SCHEMA}.sugerencias_modelo"
-        ).replace(
-            " pedidos_confirmados", f" {CATALOG}.{SCHEMA}.pedidos_confirmados"
-        )
-        try:
-            r = requests.post(
-                f"{ADB_HOST}/api/2.0/sql/statements",
-                headers={"Authorization": f"Bearer {token}"},
-                json={"warehouse_id": WH_ID, "statement": full_sql,
-                      "wait_timeout": "30s", "on_wait_timeout": "WAIT"},
-                timeout=35
-            )
-            d = r.json()
-            if d.get("status", {}).get("state") == "SUCCEEDED":
-                schema_cols = [c["name"] for c in d.get("manifest", {}).get("schema", {}).get("columns", [])]
-                rows = d.get("result", {}).get("data_array", [])
-                return [dict(zip(schema_cols, row)) for row in rows]
-        except Exception as e:
-            pass  # Fallback to SQLite
-    # SQLite fallback
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
-    cur.execute(sql_stmt, params)
-    rows = [dict(r) for r in cur.fetchall()]
-    con.close()
-    return rows
+    if not token:
+        raise RuntimeError("No se pudo obtener token de Databricks. Verifica credenciales.")
 
-def _exec(sql_stmt, params=()):
-    """INSERT/UPDATE: Databricks primero, fallback SQLite."""
-    token = _adb_token()
-    if token and params:
-        vals = ", ".join([f"'{p}'" if isinstance(p, str) else str(p) for p in params])
-        full = sql_stmt.replace("?", "{}", -1)
+    # Sustituir ? por valores (Databricks ODBC no soporta ? params en REST API)
+    if params:
         for p in params:
             p_str = f"'{p}'" if isinstance(p, str) else str(p)
-            full = full.replace("?", p_str, 1)
-        for t in ["clientes","vendedores","skus","historial_compras","stock_actual","sugerencias_modelo","pedidos_confirmados"]:
-            full = full.replace(f" {t}", f" {CATALOG}.{SCHEMA}.{t}")
-        try:
-            r = requests.post(
-                f"{ADB_HOST}/api/2.0/sql/statements",
-                headers={"Authorization": f"Bearer {token}"},
-                json={"warehouse_id": WH_ID, "statement": full,
-                      "wait_timeout": "30s", "on_wait_timeout": "WAIT"},
-                timeout=35
-            )
-            if r.json().get("status", {}).get("state") == "SUCCEEDED":
-                return
-        except Exception:
-            pass
-    # SQLite fallback
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    cur.execute(sql_stmt, params)
-    con.commit()
-    con.close()
+            sql_stmt = sql_stmt.replace("?", p_str, 1)
+
+    # Calificar tablas con catálogo completo
+    for t in ["clientes","vendedores","skus","historial_compras","stock_actual","sugerencias_modelo","pedidos_confirmados","feedback_rechazos"]:
+        sql_stmt = sql_stmt.replace(f" {t}", f" {CATALOG}.{SCHEMA}.{t}")
+
+    r = requests.post(
+        f"{ADB_HOST}/api/2.0/sql/statements",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"warehouse_id": WH_ID, "statement": sql_stmt,
+              "wait_timeout": "30s", "on_wait_timeout": "WAIT"},
+        timeout=35
+    )
+    r.raise_for_status()
+    d = r.json()
+    if d.get("status", {}).get("state") != "SUCCEEDED":
+        raise RuntimeError(f"Databricks query failed: {d.get('status')}")
+    schema_cols = [c["name"] for c in d.get("manifest", {}).get("schema", {}).get("columns", [])]
+    rows = d.get("result", {}).get("data_array", [])
+    return [dict(zip(schema_cols, row)) for row in rows]
+
+
+def _exec(sql_stmt, params=()):
+    """Ejecuta INSERT/UPDATE en Databricks SQL Serverless. Lanza excepción si falla."""
+    token = _adb_token()
+    if not token:
+        raise RuntimeError("No se pudo obtener token de Databricks. Verifica credenciales.")
+
+    if params:
+        for p in params:
+            p_str = f"'{p}'" if isinstance(p, str) else str(p)
+            sql_stmt = sql_stmt.replace("?", p_str, 1)
+
+    for t in ["clientes","vendedores","skus","historial_compras","stock_actual","sugerencias_modelo","pedidos_confirmados","feedback_rechazos"]:
+        sql_stmt = sql_stmt.replace(f" {t}", f" {CATALOG}.{SCHEMA}.{t}")
+
+    r = requests.post(
+        f"{ADB_HOST}/api/2.0/sql/statements",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"warehouse_id": WH_ID, "statement": sql_stmt,
+              "wait_timeout": "30s", "on_wait_timeout": "WAIT"},
+        timeout=35
+    )
+    r.raise_for_status()
+    d = r.json()
+    if d.get("status", {}).get("state") != "SUCCEEDED":
+        raise RuntimeError(f"Databricks exec failed: {d.get('status')}")
 
 
 def get_client_profile(cliente_query: str) -> dict:
@@ -185,18 +161,20 @@ def get_purchase_history(cliente_id: str, semanas: int = 8) -> dict:
         SELECT sk.nombre as sku_nombre,
                COUNT(*) as pedidos,
                ROUND(AVG(CAST(h.cajas_pedidas AS REAL)), 1) as promedio_cajas,
-               SUM(CAST(h.cajas_pedidas AS INTEGER)) as total_cajas
+               SUM(CAST(h.cajas_pedidas AS INTEGER)) as total_cajas,
+               MAX(h.fecha) as ultimo_pedido
         FROM historial_compras h
         JOIN skus sk ON h.sku_id = sk.sku_id
         WHERE h.cliente_id = ?
-          AND h.fecha >= DATE('now', ? || ' days')
         GROUP BY sk.nombre
         ORDER BY total_cajas DESC
-    """, (cliente_id, f"-{semanas * 7}"))
+        LIMIT 10
+    """, (cliente_id,))
 
     if not rows:
-        return {"mensaje": f"Sin historial reciente para {cliente_id}"}
-    return {"cliente_id": cliente_id, "semanas": semanas, "resumen_por_sku": rows}
+        return {"mensaje": f"Sin historial para {cliente_id}"}
+    return {"cliente_id": cliente_id, "semanas": semanas, "historial": rows,
+            "resumen_por_sku": rows}
 
 
 def get_stock_alert(cliente_id: str) -> dict:
@@ -259,6 +237,98 @@ def confirm_order(cliente_id: str, vendedor_id: str, items: list, canal: str = "
     }
 
 
+def register_rejection_feedback(cliente_id: str, sku_id: str, motivo: str,
+                                 comentario: str = None, pedido_id: str = None) -> dict:
+    """Registra por qué el cliente rechazó o ajustó un SKU sugerido. Alimenta el modelo ML."""
+    import uuid
+    from datetime import datetime
+
+    MOTIVOS_VALIDOS = ["stock_previo", "precio_alto", "no_consume",
+                       "competencia", "dano_producto", "promocion_competencia", "otro"]
+    motivo_norm = motivo.lower().replace(" ", "_")
+    if motivo_norm not in MOTIVOS_VALIDOS:
+        motivo_norm = "otro"
+
+    # Obtener nombre del SKU
+    sku_row = _q("SELECT nombre FROM skus WHERE sku_id = ?", (sku_id,))
+    sku_nombre = sku_row[0]["nombre"] if sku_row else sku_id
+
+    # Obtener vendedor_id desde sesión activa del cliente (aproximación)
+    feedback_id = f"FB-{uuid.uuid4().hex[:8].upper()}"
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    _exec("""
+        INSERT INTO feedback_rechazos
+        (feedback_id, pedido_id, cliente_id, vendedor_id, sku_id, sku_nombre, motivo, comentario, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (feedback_id, pedido_id, cliente_id, "VEN01", sku_id, sku_nombre,
+          motivo_norm, comentario, ts))
+
+    return {
+        "feedback_id":  feedback_id,
+        "cliente_id":   cliente_id,
+        "sku":          sku_nombre,
+        "motivo":       motivo_norm,
+        "comentario":   comentario,
+        "estado":       "✅ Feedback registrado — el modelo lo considerará en el próximo ciclo",
+        "timestamp":    ts
+    }
+
+
+def analyze_shelf_photo(image_base64: str, cliente_id: str = None) -> dict:
+    """Analiza una foto del anaquel del cliente. Detecta productos visibles, stock bajo y faltantes vs sugerido."""
+    import os, base64, json, requests
+
+    # Usar Azure OpenAI directamente para visión
+    endpoint = os.environ.get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", "")
+    api_key  = os.environ.get("AZURE_API_KEY", "")
+
+    # Construir contexto del cliente si se provee
+    contexto_cliente = ""
+    if cliente_id:
+        sug = _q("SELECT s.sku_id, sk.nombre FROM sugerencias_modelo s JOIN skus sk ON s.sku_id=sk.sku_id WHERE s.cliente_id=?", (cliente_id,))
+        if sug:
+            productos = ", ".join([r["nombre"] for r in sug])
+            contexto_cliente = f"\n\nProductos sugeridos para este cliente: {productos}"
+
+    prompt = (
+        "Eres un asistente de ventas de Pepsi Centroamérica. Analiza esta foto del anaquel de un cliente. "
+        "Identifica: (1) productos Pepsi visibles y estimación de stock, (2) productos con stock bajo o agotados, "
+        "(3) presencia de productos de la competencia (Coca-Cola, etc.). "
+        "Sé específico y conciso. Usa emojis para hacer el resumen más claro."
+        + contexto_cliente
+    )
+
+    headers = {"api-key": api_key, "Content-Type": "application/json"}
+    body = {
+        "model": "gpt-4o",
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_base64}",
+                    "detail": "low"
+                }}
+            ]
+        }],
+        "max_tokens": 600
+    }
+
+    try:
+        # Extraer base URL del endpoint de Foundry
+        base = endpoint.split("/api/projects")[0]
+        r = requests.post(
+            f"{base}/openai/deployments/gpt-4o/chat/completions?api-version=2024-12-01-preview",
+            headers=headers, json=body, timeout=30
+        )
+        result = r.json()
+        analysis = result["choices"][0]["message"]["content"]
+        return {"analysis": analysis, "cliente_id": cliente_id, "status": "ok"}
+    except Exception as e:
+        return {"error": str(e), "status": "failed"}
+
+
 # ── Definiciones de tools para Azure AI Foundry ───────────────────────────
 
 TOOL_DEFINITIONS = [
@@ -318,12 +388,38 @@ TOOL_DEFINITIONS = [
             },
             "required": ["cliente_id", "vendedor_id", "items"]}
     }},
+    {"type": "function", "function": {
+        "name": "register_rejection_feedback",
+        "description": "Registra por qué el cliente rechazó o ajustó un SKU sugerido. Úsala cuando el rep explique que un producto no se vendió o fue reducido. Alimenta el modelo ML para mejorar futuras sugerencias.",
+        "parameters": {"type": "object",
+            "properties": {
+                "cliente_id":  {"type": "string", "description": "ID del cliente"},
+                "sku_id":      {"type": "string", "description": "ID del SKU rechazado (ej: AGU-600)"},
+                "motivo":      {"type": "string", "enum": ["stock_previo", "precio_alto", "no_consume", "competencia", "dano_producto", "promocion_competencia", "otro"],
+                                "description": "Categoría del motivo de rechazo"},
+                "comentario":  {"type": "string", "description": "Comentario libre del vendedor (opcional)"},
+                "pedido_id":   {"type": "string", "description": "ID del pedido relacionado (opcional)"}
+            },
+            "required": ["cliente_id", "sku_id", "motivo"]}
+    }},
+    {"type": "function", "function": {
+        "name": "analyze_shelf_photo",
+        "description": "Analiza una foto del anaquel del cliente. Detecta productos visibles, stock bajo y productos de la competencia. Úsala cuando el rep mande una foto del anaquel.",
+        "parameters": {"type": "object",
+            "properties": {
+                "image_base64": {"type": "string", "description": "Imagen en base64"},
+                "cliente_id":   {"type": "string", "description": "ID del cliente (opcional, para comparar con sugerido)"}
+            },
+            "required": ["image_base64"]}
+    }},
 ]
 
 TOOL_MAP = {
-    "get_client_profile":   get_client_profile,
-    "get_suggested_order":  get_suggested_order,
-    "get_purchase_history": get_purchase_history,
-    "get_stock_alert":      get_stock_alert,
-    "confirm_order":        confirm_order,
+    "get_client_profile":           get_client_profile,
+    "get_suggested_order":          get_suggested_order,
+    "get_purchase_history":         get_purchase_history,
+    "get_stock_alert":              get_stock_alert,
+    "confirm_order":                confirm_order,
+    "register_rejection_feedback":  register_rejection_feedback,
+    "analyze_shelf_photo":          analyze_shelf_photo,
 }

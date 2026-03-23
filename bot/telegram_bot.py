@@ -7,7 +7,7 @@ Flujo:
   mensaje normal   → requiere sesión activa; registra en audit_log
   /admin <PASS>    → modo supervisor: generar códigos
 """
-import logging, json, os, sqlite3, uuid, re
+import logging, json, os, sqlite3, uuid, re, base64, requests as req_lib
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
@@ -112,28 +112,38 @@ def get_maxi_response(user_id: int, user_msg: str, session: dict) -> tuple[str, 
     """Envía mensaje a Maxi y procesa tool calls. Retorna (respuesta, thread_id)."""
     with AgentsClient(endpoint=ENDPOINT, credential=AzureCliCredential()) as client:
         # Thread por usuario (persistente durante la sesión del bot)
+        import time
         thread_id = user_threads.get(user_id)
         if not thread_id:
-            thread = client.create_thread()
+            thread = client.threads.create()
             thread_id = thread.id
             user_threads[user_id] = thread_id
 
-        client.create_message(thread_id=thread_id, role="user", content=user_msg)
-        run = client.create_and_process_run(thread_id=thread_id, agent_id=AGENT_ID)
+        client.messages.create(thread_id=thread_id, role="user", content=user_msg)
+        run = client.runs.create(
+            thread_id=thread_id,
+            agent_id=AGENT_ID,
+            truncation_strategy={"type": "last_messages", "last_messages": 30}
+        )
 
-        # Procesar tool calls
-        while run.status in ("requires_action",):
-            tool_outputs = []
-            for tc in run.required_action.submit_tool_outputs.tool_calls:
-                args = json.loads(tc.function.arguments)
-                result = run_tool(tc.function.name, args)
-                tool_outputs.append({"tool_call_id": tc.id, "output": result})
-            run = client.submit_tool_outputs_to_run(
-                thread_id=thread_id, run_id=run.id, tool_outputs=tool_outputs
-            )
+        # Polling manual
+        while True:
+            run = client.runs.get(thread_id=thread_id, run_id=run.id)
+            if run.status == "requires_action":
+                tool_outputs = []
+                for tc in run.required_action.submit_tool_outputs.tool_calls:
+                    args = json.loads(tc.function.arguments)
+                    result = run_tool(tc.function.name, args)
+                    tool_outputs.append({"tool_call_id": tc.id, "output": result})
+                client.runs.submit_tool_outputs(
+                    thread_id=thread_id, run_id=run.id, tool_outputs=tool_outputs
+                )
+            elif run.status in ("completed", "failed", "cancelled"):
+                break
+            time.sleep(2)
 
         # Obtener respuesta
-        messages = list(client.list_messages(thread_id=thread_id))
+        messages = list(client.messages.list(thread_id=thread_id))
         for m in messages:
             if m.role == "assistant":
                 for c in m.content:
@@ -279,6 +289,58 @@ def handle_message(msg):
     except Exception as e:
         log.error(f"Error procesando mensaje de {uid}: {e}")
         bot.send_message(uid, "⚠️ Tuve un problema técnico. Intenta de nuevo en un momento.")
+
+
+@bot.message_handler(content_types=["photo"])
+def handle_photo(msg):
+    uid = msg.from_user.id
+    session = get_session(uid)
+    if not session:
+        bot.send_message(uid, "🔒 Activa tu cuenta primero con `/start TU-CÓDIGO`", parse_mode="Markdown")
+        return
+
+    bot.send_chat_action(uid, "typing")
+    bot.send_message(uid, "📸 Analizando el anaquel...")
+
+    try:
+        # Descargar la foto más grande
+        file_id = msg.photo[-1].file_id
+        file_info = bot.get_file(file_id)
+        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+        img_bytes = req_lib.get(file_url, timeout=15).content
+        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+        # Pasar al agente con contexto de foto
+        prompt = (f"[Vendedor: {session['nombre']} | ID: {session['vendedor_id']} | Zona: {session['zona']}]\n"
+                  f"El rep acaba de mandar una foto del anaquel del cliente. "
+                  f"Llama a analyze_shelf_photo con la imagen en base64 que te paso a continuación "
+                  f"y dame un análisis útil para la visita de ventas.\n"
+                  f"image_base64: {img_b64[:50]}... [imagen adjunta]")
+
+        # Enviar imagen directamente al thread como mensaje con la imagen real
+        respuesta, thread_id = get_maxi_response_with_image(uid, img_b64, session)
+        bot.send_message(uid, respuesta, parse_mode="Markdown")
+
+    except Exception as e:
+        log.error(f"Error procesando foto de {uid}: {e}")
+        bot.send_message(uid, "⚠️ No pude analizar la foto. Intenta de nuevo.")
+
+
+def get_maxi_response_with_image(user_id: int, img_b64: str, session: dict) -> tuple[str, str]:
+    """Llama a analyze_shelf_photo directamente (sin pasar por el agente para la imagen)."""
+    from agent.tools import analyze_shelf_photo
+
+    # Obtener cliente activo del thread si existe
+    cliente_id = None
+    result = analyze_shelf_photo(image_base64=img_b64, cliente_id=cliente_id)
+
+    if result.get("status") == "ok":
+        analysis = result["analysis"]
+        respuesta = f"📸 *Análisis del anaquel:*\n\n{analysis}"
+    else:
+        respuesta = f"⚠️ No pude analizar la imagen: {result.get('error', 'error desconocido')}"
+
+    return respuesta, "photo-direct"
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
